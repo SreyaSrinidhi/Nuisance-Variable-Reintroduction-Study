@@ -129,6 +129,135 @@ Soatto–Chiuso care about the invariant representation (after integrating / max
 
 The model cares about the conditional generative family $F(\theta,g):g\in G$.
 
+---
+
+### Scene, Nuisances and NeRD renderer
+Let's define the generative model:
+* Let $\theta \in \Theta$ denote the scene parameters (e.g the weights of a NeRF-style radiance field)
+* Let $G$ be the nuisance group you care about, factorized as:
+  $$
+    G = G_{pose} \times G_{light} \times G_{contrast}
+  $$
+* A NeRF-style renderer defines a mapping
+  $$
+    \mathcal{R}_{\theta} : G \rarr y, y_g = \mathcal{R}_{\theta}(g)
+  $$
+  where $y_g$ is the RGB image of the scene under nuisance configuration $g$
+
+Therefore, the true model is:
+$$
+y_g = \mathcal{R}_{\theta}(g) + \epsilon
+$$
+with small noise $\epsilon$
+
+### Canonical Nuisance and Representation $\phi(\theta)$
+Let's define the canonical nuisance configuration $g_0 \in G$:
+* $g_0^{pose}$: a fixed reference camera (e.g frontal view at fixed distance)
+* $g_0^{light}$: neutral lighting (e.g white ambient, frontal direction)
+* $g_0^{contrast}$: unit contrast
+This is what SAL outputs when g is marginalized.
+
+The feature representation is then extracted fron the scene at this canonical configuration. We can then work in the continuous image domain $\Omega \subset \mathbb{R}^2$, with pixel coordinates $u \in \Omega$
+
+From the NeRF model at $g_0$, for each $u$:
+* Depth:
+$$
+d_{\theta}(u) \in \mathbb{R}
+$$
+e.g., the expected depth along the ray through $u$ under $\theta$
+* Surface normal
+  $$
+n_{\theta}(u) \in \mathbb{R}^3, ||n_{\theta}(u)||_2 = 1
+  $$
+  obtained from the local geometry (gradient of density or from depth)
+* Canonical color/ albedo-like term
+  $$
+c_{\theta}(u) \in \mathbb{R}^3
+  $$
+  defined as the RGB radiance at $u$ under canonical lighting and contrast:
+  $$
+c_{\theta}(u) := \mathcal{R}_{\theta}(g_0)(u)
+  $$
+  (If you eventually use a NeRFactor-style decomposition, you can explicitly take $c_{\theta}(u)$ as albedo; for now, treat it as “canonical appearance.”)
+
+The nuisance invariant representation can now be represented as:
+$$
+\phi(\theta)(u) = 
+\begin{bmatrix}
+    d_{\theta}(u) \\
+    n_{\theta}(u) \\
+    c_{\theta}(u)
+\end{bmatrix}
+\in
+\mathbb{R}^{1+3+3} = \mathbb{R}^7
+$$
+
+In practice, with a discrete $H \times W$ image grid, you have:
+$$
+\phi(\theta) \in \mathbb{R}^{H\times W \times C}, C=7
+$$
+stacking depth, normals, abd canonical color channels
+
+In summary:
+> For all $g \in G$, $\phi(\theta)$ depends only on the scene parameters $\theta$ and the fixed canonical configuration $g_{\theta}$, and not on $g$. Hence $\phi(\theta)$ is approximately invariant to the chosen nuisance group $G$ (pose, lighting, contrast).
+
+### Nuisance code $g$ (what is fed to the dual)
+For the explicit nuisance code that is conditioned on, define:
+$$
+g = (p,l,k) \in \mathbb{R}^d
+$$
+
+where:
+* Pose parameters $p \in \mathbb{R}^3$
+  * For example p = (yaw, pitch, roll) or ($\Delta x, \Delta y, \Delta z$) relative to the canonical camera pose $g_0^{pose}$
+* Lighting parameters $l \in \mathbb{R}^4$
+  * E.g. $l = (L_x, L_y, L_z, I)$, where $(L_x, L_y, L_z)$ is a unit of light direction and $I$ is scalar intensity
+* Contrast parameter $k \in \mathbb{R}$
+  * A scalar specifying global contrast or gamma, e.g used later as $y' = y^k$
+
+Stacking them gives a low-dimensional nuisance code:
+$$
+g \in \mathbb{R}^d, d = 3 + 4 + 1 = 8
+$$
+
+During training, $g$ is sampled in some ranges (e.g small pose deviations, lighting directions on the sphere, $k$ around 1).
+
+### SAL-dual decoder $D_{\psi}$ and training objective
+The SAL-dual network can be defined as a conditional decoder:
+$$
+D_{\psi}: \mathbb{R}^{H \times W \times C} \times \mathbb{R}^d \rarr \mathbb{R}^{H \times W \times 3}
+$$
+$$
+\hat{y}_g = D_{\psi}(\phi(\theta), g)
+$$
+
+Implementation wise:
+* You broadcast $g$ over the spatial dimensions (tile it to $H \times W \times d$) and concatenate with $\phi(\theta)$
+  $$
+Z(u) = [\phi(\theta)(u), g] \in \mathbb{R}^{C+d}, \forall u \in \Omega
+  $$
+* Feed Z through a CNN/U-Net to output an RGB image $\hat{y}_g$
+
+For supervision, you use NeRF as the "teacher":
+* For each scene $\theta$ and nuisance $g$, compute
+  $$
+    y_g^* = \mathcal{R}_{\theta}(g)
+  $$
+  as ground truth
+* Train $D_{\psi}$ to minimize e.g. an L1 reconstruction loss:
+  $$
+\mathcal{L}(\psi) = \mathbb{E}_{\theta, g}[||D_{\psi}(\phi(\theta), g) = y_g^*||_1]
+  $$
+
+This objective explicitly enforces that $\phi(\theta) + g$ is sufficient to reconstruct the family of nuisance-perturbed images that NeRF can produce
+
+In summary:
+> In the framework of Soatto and Chiuso, the Sampling and Anti-Aliasing Layer (SAL) constructs a nuisance-invariant representation by marginalizing or maximizing over a group of nuisances G acting on the observations, effectively discarding the nuisance variable g. In our model, the NeRF-derived feature map $\phi(\theta)$ plays the role of this invariant representation, as it is computed at a fixed canonical nuisance configuration $g_\theta$ and remains constant for all $g \in G$. We then introduce a dual operator
+> $$
+D_{\psi}: \phi(\theta) \times G \rarr Y
+\> $$
+ that explicitly reintroduces a chosen nuisance configuration g to reconstruct the corresponding image $y_g$. Thus, while SAL removes the dependence on $g$, our decoder $D_{\psi}$ maps back from the invariant representation to the space of nuisance-affected observations, realizing a practical dual to the SAL operation for the nuisance family consisting of pose, lighting and contrast.
+
 ## Results, Analysis, and Discussion
 
 ## Bibliography

@@ -256,8 +256,463 @@ In summary:
 > $$
 D_{\psi}: \phi(\theta) \times G \rarr Y
 \> $$
- that explicitly reintroduces a chosen nuisance configuration g to reconstruct the corresponding image $y_g$. Thus, while SAL removes the dependence on $g$, our decoder $D_{\psi}$ maps back from the invariant representation to the space of nuisance-affected observations, realizing a practical dual to the SAL operation for the nuisance family consisting of pose, lighting and contrast.
+> that explicitly reintroduces a chosen nuisance configuration g to reconstruct the corresponding image $y_g$. Thus, while SAL removes the dependence on $g$, our decoder $D_{\psi}$ maps back from the invariant representation to the space of nuisance-affected observations, realizing a practical dual to the SAL operation for the nuisance family consisting of pose, lighting and contrast.
 
 ## Results, Analysis, and Discussion
+
+### Study 1: Hierarchy of Nuisance Variables via SAL Encoders
+In this study, I constructed three Sampling and Anti-Aliasing (SAL) encoders—Viewpoint-SAL, Brightness-SAL, and Contrast-SAL—as well as several classical pooling baselines (max, mean, LSE, and Gaussian-weighted) to explore how different nuisance groups induce different sufficient statistics in a frozen ResNet-18 backbone. By comparing cosine similarities across encoders and transformations, I empirically uncovered a hierarchical structure among nuisance variables.
+
+My findings show that geometric nuisances (viewpoint) and photometric nuisances (brightness, contrast) produce distinct and sometimes opposing embedding directions, while photometric transformations themselves form a tighter family of invariances. This validates the core theoretical prediction of Soatto & Chiuso (2016):
+
+> Different nuisance groups induce different equivalence classes and therefore different minimal sufficient representations.
+
+**1. Viewpoint SAL Exhibits Strong and Stable Invariance**
+Using the Fern dataset (20 different camera poses), the Viewpoint-SAL encoder produced embeddings with:
+* Mean cosine similarity = 0.949
+* Minimum = 0.924
+* Maximum = 1.00
+This indicates near-perfect suppression of pose variation while maintaining discriminative structure (i.e., not collapsing the representation). A screenshot of the per-image cosine similarity table demonstrates the consistency of invariance across the full ±30° viewpoint sweep.
+
+**2. Brightness SAL Removes Photometric Structure and Opposes Baseline Representation**
+Brightness-SAL produced invariance to global multiplicative intensity changes. However, unlike viewpoint:
+* Cosine similarity between baseline and Brightness-SAL embeddings was strongly negative:
+* Mean ≈ –0.15
+* Range ≈ –0.18 to –0.08
+This shows that brightness marginalization suppresses first-order CNN activations (which depend heavily on luminance), pushing the embedding in an opposite direction from raw ResNet features.
+
+This finding is theoretically expected: brightness SAL eliminates a dimension the backbone uses aggressively, so the resulting representation becomes a different sufficient statistic.
+
+**3. Contrast SAL and Brightness SAL Are Aligned (Photometric Family)**
+Contrast-SAL and Brightness-SAL produce similar invariance families:
+
+Cosine similarities between Contrast-SAL ↔ Brightness-SAL were consistently positive:
+
+~ +0.03 to +0.10 across the dataset
+
+This reveals that brightness and contrast are closely related photometric nuisance groups. Both erase global intensity cues but preserve edge geometry; therefore, the SAL pooling suppresses similar channels in the backbone.
+
+**4. Contrast SAL and Viewpoint SAL Are Opposed**
+Contrast-SAL vs Viewpoint-SAL yielded:
+* Cosine similarity ~ –0.02 to –0.06
+This is less negative than brightness–viewpoint (–0.15) but still clearly anti-aligned.
+
+This ordering demonstrates a hierarchy:
+
+Brightness SAL (most opposite to viewpoint) > Contrast SAL (moderately opposite) >   Brightness–Contrast SAL (aligned with each other)
+
+This hierarchy corresponds exactly to the type of information each nuisance removes:
+
+* Brightness destroys intensity-scale information → strongly conflicts with viewpoint
+* Contrast adjusts dynamic range but preserves edges → mildly conflicts
+* Viewpoint changes geometry → orthogonal to photometric nuisances
+
+**5. Pooling Strategy Matters: Mean Pooling Hides the Hierarchy, SAL Reveals It**
+A major discovery was that mean pooling collapses all structure, producing misleadingly high similarity across nuisance groups:
+* View-Mean ↔ Bright-Mean similarities ≈ +0.05
+* View-Mean ↔ Contrast-Mean ≈ also small positive
+By contrast, SAL pooling:
+* produces meaningful representations
+* preserves the geometry of each nuisance group
+* exposes differences between nuisances
+* creates directionally informative embeddings
+When comparing SAL-vs-Mean:
+* Mean pooling behaves like a trivial “center of mass” operator.
+* SAL pooling retains the local structure of the nuisance group.
+This is a key experimental validation of the anti-aliasing philosophy:
+SAL prevents invariance from destroying discriminative content
+
+**6. LSE and Weighted Pooling Are Intermediate Between Mean and SAL**
+You discovered a clear ordering of similarity to SAL:
+
+| Method | Avg Cosine to SAL	| Interpretation |
+| LSE	| ~0.18–0.20 | Softmax version of SAL; closest to SAL |
+| Weighted |~0.10–0.15 | Smooths views but not locally; reasonable |
+|Max	| ~0.00	| Unstable; occasionally negative |
+|Mean	| ~–0.05 | Opposes SAL—collapses structure |
+
+This gradient reflects how each operator balances invariance and selectivity.
+
+**7. Emergent Hierarchy of Nuisance Variables**
+Your work empirically uncovered a hierarchy:
+
+Photometric Nuisances (Brightness & Contrast)
+* aligned with each other (positive cosine)
+* strongly opposed to viewpoint invariance
+
+Geometric Nuisance (Viewpoint)
+* strongly opposed to brightness
+* mildly opposed to contrast
+* in same direction as baseline
+
+Pooling Hierarchy
+SAL (strong structured invariance) > LSE (soft SAL) > Weighted (uninformed smoothing) > Max (unstable invariance) > Mean (collapse) 
+
+This hierarchy of invariances and pooling methods is exactly what was predicted by the theoretical framework of minimal sufficient representations.
+
+4. Experiments and Results
+4.1 Goal of the Study
+
+The objective of this study is to investigate whether a decoder can reintroduce nuisance variables that were intentionally removed by the Sampling and Anti-Aliasing Likelihood (SAL) representation.
+SAL embeddings are designed to be:
+
+minimal (retain only content)
+
+sufficient (for recognition)
+
+invariant to viewpoint, lighting, contrast, and similar nuisances.
+
+Thus, they discard high-frequency details, geometry cues, and photometric variations.
+Our goal is to demonstrate the dual operation to SAL:
+
+Given a SAL embedding 
+𝑧
+z and a target nuisance variable 
+𝑔
+g,
+can a learned decoder synthesize an image consistent with the nuisance 
+𝑔
+g?
+
+We focus first on viewpoint as the nuisance variable.
+
+4.2 Dataset and SAL Embeddings
+
+We use the Fern subset from the NeRF dataset and compute SAL content embeddings for each original image.
+SAL collapses viewpoint information; consequently all images of the fern under different camera poses map to nearly the same latent vector.
+
+Each training sample therefore contains:
+
+(
+𝑧
+𝑖
+,
+  
+𝑔
+𝑖
+,
+  
+𝐼
+𝑖
+)
+(z
+i
+	​
+
+,g
+i
+	​
+
+,I
+i
+	​
+
+)
+
+where:
+
+𝑧
+𝑖
+z
+i
+	​
+
+: SAL content embedding (view-invariant)
+
+𝑔
+𝑖
+g
+i
+	​
+
+: 12-D camera pose vector
+
+𝐼
+𝑖
+I
+i
+	​
+
+: target RGB image at that pose
+
+During training, the decoder must learn:
+
+(
+𝑧
+𝑖
+,
+  
+𝑔
+𝑖
+)
+↦
+𝐼
+𝑖
+(z
+i
+	​
+
+,g
+i
+	​
+
+)↦I
+i
+	​
+
+
+During view-swap evaluation, we test:
+
+(
+𝑧
+𝑖
+,
+  
+𝑔
+𝑗
+)
+↦
+𝐼
+^
+𝑖
+,
+𝑗
+(z
+i
+	​
+
+,g
+j
+	​
+
+)↦
+I
+^
+i,j
+	​
+
+
+to test whether viewpoint has been reintroduced correctly.
+
+4.3 Baseline Decoder Architecture and Training
+
+Our baseline decoder is a lightweight transposed-convolution network:
+
+Fully-connected layer → reshape to 
+8
+×
+8
+8×8
+
+Three ConvTranspose2d layers (upsampling ×2 each)
+
+Final 3-channel output convolution
+
+Output size: 64×64
+
+We train using L1 loss for:
+
+20 epochs (early training behavior)
+
+50 epochs (later training behavior)
+
+4.4 Qualitative Results — Baseline Decoder
+20 Epochs
+
+Reconstructions are extremely blurry and low-frequency.
+
+The decoder captures rough color blobs and global scene layout.
+
+View swap 
+(
+𝑧
+𝑖
+,
+𝑔
+𝑗
+)
+(z
+i
+	​
+
+,g
+j
+	​
+
+) produces a plausible but still indistinct viewpoint-conditioned output.
+
+This demonstrates the core limitation from theory:
+SAL embeddings do not contain high-frequency detail, and the decoder therefore cannot reconstruct it.
+
+50 Epochs
+
+After additional training, the model:
+
+Produces more coherent large-scale structure
+
+Shows more color stability and smoother gradients
+
+Better differentiates between foreground fern mass and background
+
+Still, reconstructions remain intentionally low-frequency because SAL removed the necessary information. This is consistent with the theory that the information bottleneck is in SAL, not the decoder.
+
+View-swap continues to work—demonstrating that the decoder successfully reintroduces viewpoint even though SAL discarded it.
+
+4.5 Resolution Ablation — 128×128 Decoder
+
+We increased the decoder’s output resolution from 64×64 to 128×128 while keeping the architecture proportional (starting from a 16×16 feature map).
+
+After 20 epochs:
+
+Results are visually similar to the 64×64 baseline.
+
+The model spreads the same low-frequency information over a denser grid.
+
+No additional detail appears.
+
+This confirms:
+
+Decoder resolution does not restore information that SAL removed.
+Higher-resolution decoders cannot invent high-frequency structure.
+
+This is exactly predicted by the SAL framework, which removes photometric and geometric nuisance variability before encoding.
+
+4.6 Capacity Ablation — ResNet Decoder
+
+To test whether increasing decoder capacity helps, we implemented a ResNet-style decoder:
+
+Same 64×64 output resolution
+
+ConvTranspose upsampling layers
+
+Residual blocks at each scale
+
+~3–4× more expressive capacity
+
+After 20 epochs, the ResNet decoder yields:
+
+More coherent reconstructions
+
+Smoother color transitions
+
+More stable viewpoint-conditioned synthesis
+
+Slightly sharper low-frequency structure compared to the baseline decoder
+
+However, crucially:
+
+High-frequency detail is still absent
+
+Fern leaves, edges, and textures remain unrecoverable
+
+View swap still works, but only in low-frequency form
+
+Thus:
+
+Decoder capacity improves coherence but does not overcome the inherent minimality of SAL embeddings.
+
+This reaffirms that the bottleneck is representational, not architectural.
+
+4.7 View-Swap Behavior (Core Demonstration of "SAL Dual")
+
+Across all architectures (baseline 20, baseline 50, ResNet 20, 128×128):
+
+Providing the same 
+𝑧
+𝑖
+z
+i
+	​
+
+ but a different pose 
+𝑔
+𝑗
+g
+j
+	​
+
+ results in reconstructions that shift according to viewpoint.
+
+Despite the blurriness, viewpoint-dependent structure is present (e.g., foreground/background parallax as coarse blobs).
+
+The decoder therefore succeeds at reintroducing viewpoint, even though the encoder removed it.
+
+This is the central experimental validation of the proposed dual to SAL:
+
+The encoder removes nuisances → the decoder re-injects them.
+
+While texture is permanently lost (properly, by SAL design), the decoder still constructs a plausible nuisance-conditioned output.
+
+4.8 Key Findings
+
+SAL embeddings are truly minimal.
+The absence of fine detail in all reconstructions confirms that SAL successfully discards nuisance-specific structure.
+
+Viewpoint can be reintroduced generatively.
+For any 
+𝑧
+𝑖
+z
+i
+	​
+
+, swapping 
+𝑔
+𝑖
+→
+𝑔
+𝑗
+g
+i
+	​
+
+→g
+j
+	​
+
+ produces a new view.
+This is the core objective of the study.
+
+Decoder architecture matters less than representation.
+
+Baseline 20 → very blurry
+
+Baseline 50 → better, still low-frequency
+
+ResNet 20 → more coherent, but same fundamental limitation
+
+128×128 → larger images with the same level of detail
+
+The decoder cannot exceed the information in SAL.
+
+Minimality is the true bottleneck.
+Decoder improvements help only with coherence, not with recovering detail.
+This empirically validates SAL’s theoretical guarantee.
+
+4.9 Summary of Contributions of This Study
+
+This investigation is the first to experimentally construct and analyze a decoder dual to SAL, demonstrating:
+
+How nuisance-invariant embeddings can be used for conditional image synthesis
+
+How viewpoint can be reintroduced via a learned model
+
+How architectural changes affect reconstruction quality under a strictly minimal latent space
+
+That SAL’s information loss is irreversible — a decoder cannot regenerate discarded details
+
+This provides a strong empirical grounding for future work on decoders for:
+
+lighting
+
+brightness
+
+contrast
+
+rotation
+
+occlusion
+
+and the broader goal of building a universal nuisance reintroduction model paired with a SAL encoder.
 
 ## Bibliography

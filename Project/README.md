@@ -354,7 +354,7 @@ To reproduce all results in the paper:
 - LLFF dataset  
 - NeRF-Pytorch utilities (pose loading, image handling)  
 - PyTorch  
-- ChatGPT assistance for formatting and clarity (all algorithmic work is original)
+- ChatGPT assistance for formatting and clarity
 
 ---
 

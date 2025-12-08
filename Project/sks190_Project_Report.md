@@ -448,9 +448,7 @@ The dual-SAL decoder enables controlled reintroduction of specific nuisances tha
    
    If an image can be approximated by the dual-SAL mapping
 
-   $$
-   y \approx D_\psi(z_{\text{minimal}}, g_{\text{nuisance}})
-   $$
+   $$y \approx D_\psi(z_{\text{minimal}}, g_{\text{nuisance}})$$
 
    then storage reduces to saving the factorized pair $(z_{\text{minimal}}, g_{\text{nuisance}})$, where $z_{\text{minimal}}$ is low-dimensional and $g$ consists of only a few scalar parameters (pose, brightness, contrast, etc.). This creates a **generative compression scheme** in which scene content and nuisance conditions are stored separately. During decoding, the nuisance variable can be reapplied to reconstruct an image under the original conditions—or deliberately altered for editing.  
 

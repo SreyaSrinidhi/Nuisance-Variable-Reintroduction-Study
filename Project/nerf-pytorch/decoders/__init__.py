@@ -1,0 +1,3 @@
+from .view_baseline_decoder import ViewpointDecoder
+from .baseline_decoder_basech_128 import ViewpointDecoder128
+from .resnet64_decoder import ViewpointDecoderResNet

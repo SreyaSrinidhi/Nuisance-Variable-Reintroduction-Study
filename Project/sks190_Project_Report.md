@@ -179,7 +179,7 @@ $$
 
 ---
 
-## 2.4 Crucial Technical Insight: Enforcing Minimality via Scene-Level z
+## 2.4 Technical Insight: Enforcing Minimality via Scene-Level z
 
 When using a per-image SAL embedding $z_i$, I discovered the decoder simply learned:
 
@@ -191,7 +191,7 @@ while **ignoring g entirely**.
 
 This is because per-image embeddings still contained residual viewpoint information as explained in Section 2.2.
 
-### My fix (crucial extension):
+### Implemented Fix
 
 For each scene:
 

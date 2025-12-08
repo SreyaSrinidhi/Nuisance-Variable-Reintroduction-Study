@@ -447,5 +447,5 @@ The dual-SAL decoder enables controlled reintroduction of specific nuisances tha
 - Mildenhall et al. **NeRF: Representing Scenes as Neural Radiance Fields**.  
 - Zhang et al. **NeRFactor: Self-supervised Decomposition of Appearance into Shape, Illumination, and Materials**.  
 - MaterialMVP: Multiview Photometric Editing Models.  
-- Additional code and tools referenced include torchvision, PyTorch, NeRF-pytorch, and ChatGPT assistance for editing and structuring this report (cited per rubric).
+- Additional code and tools referenced include torchvision, PyTorch, NeRF-pytorch, and ChatGPT assistance for editing and structuring this report
 

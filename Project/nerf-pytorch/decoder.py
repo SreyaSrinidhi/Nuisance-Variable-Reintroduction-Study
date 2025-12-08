@@ -308,13 +308,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nuisance_path",
         type=str,
-        default="../nerf/data/nerf_llff_data/fern/poses_bounds.npy",
+        default="./data/fern/poses_bounds.npy",
         help="Path to file that contains nuisance variable values (poses or g values)"
     )
     parser.add_argument(
         "--image_path",
         type=str,
-        default="../nerf/data/nerf_llff_data/fern/images",
+        default="./data/fern/images",
         help="Path to folder containing the ground truth images"
     )
     parser.add_argument(

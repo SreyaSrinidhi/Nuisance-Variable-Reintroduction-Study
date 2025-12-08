@@ -7,17 +7,13 @@
 
 # Overview
 
-This repository contains the full implementation of:
+This repository implements:
 
 1. **SAL Encoders** for viewpoint, brightness, and contrast  
-2. **A dual-SAL decoder** that reintroduces viewpoint into a minimal representation  
-3. **Experiments** demonstrating the hierarchy of nuisances and the feasibility of nuisance reintroduction  
+2. **A Dual-SAL Decoder** that reintroduces nuisance variables removed by SAL  
+3. **Experiments** demonstrating nuisance hierarchy, invariance structure, and successful viewpoint reintroduction  
 
-The project is structured as follows:
-
-- `Project/sks190_Project_Report.md` — Project report containing background theory, methodology and results
-- `Project/nerf-pytorch/` — pytorch version of nerf that was used for baseline testing of nuisance variables. This also contains the encodre, decoder, data, datasets and experiments
-- `Project/README.md` (this file) — instructions to run code and reproduce results  
+Everything needed to reproduce the experiments in the project report is included.
 
 ---
 
@@ -32,34 +28,32 @@ Project/
 ├── nerf-pytorch/
 │   ├── decoders/                 # Baseline, 128-channel, and ResNet decoders
 │   ├── datasets/                 # Fern + multi-scene datasets
-│   |   ├── utils/                    # Pose loading, image utilities
-│   ├── encoder.py                # SAL encoder for viewpoint, brightness, contrast, training/eval
+│   │   ├── utils/                # Pose loading, image utilities
+│   ├── encoder.py                # SAL encoder (view, brightness, contrast)
 │   ├── decoder.py                # Dual-SAL decoder training/eval
-│   └── requirements.txt          # Python dependencies
-│
-└── embedding_files/              # Saved embeddings from SAL encoder
-    ├── embeddings_fern_view.pt   # Minimal embeddings used for decoder experiments
-    └── ... (other embeddings)
+│   └── requirements.txt          # All Python dependencies
+    └── embedding_files/              # Saved SAL embeddings
+        ├── embeddings_fern_view.pt   # Minimal embeddings used for decoder training
+        ├── embeddings_sal.pt         # All-scene embeddings (older)
+        └── additional embeddings...
 ```
 
 ---
 
 # 1. Environment Setup
 
-### 1.1 Create Conda Environment
-
+## 1.1 Create Conda Environment
 ```bash
 conda create -n nerf python=3.10 -y
 conda activate nerf
 ```
 
-### 1.2 Install Requirements
-
+## 1.2 Install Dependencies
 ```bash
-pip install -r Project/code/requirements.txt
+pip install -r nerf-pytorch/requirements.txt
 ```
 
-The key dependencies include:
+Key dependencies:
 
 - PyTorch  
 - TorchVision  
@@ -68,207 +62,282 @@ The key dependencies include:
 - Pillow  
 - TQDM  
 
-CUDA is optional but strongly recommended.
+CUDA strongly recommended.
 
 ---
 
 # 2. Dataset Setup (LLFF / Fern)
 
-The decoders use images and poses from the **LLFF Fern** dataset.
+This project uses the LLFF dataset (Fern scene + others).
 
-Download LLFF data:
+Download LLFF from [here](https://www.kaggle.com/datasets/arenagrenade/llff-dataset-full)
 
-```bash
-cd Project
-mkdir -p nerf/data
-```
-
-Place Fern folder here:
+Extract it into:
 
 ```
-Project/nerf/data/nerf_llff_data/fern/
-    ├── images/                # image set
-    ├── poses_bounds.npy       # camera poses
-    └── ...
-```
-
-If using multiple LLFF scenes:
-
-```
-Project/nerf/data/nerf_llff_data/<scene_name>/
+Project/nerf-pytorch/data/
+    ├── fern/
+    │   ├── images/
+    │   └── poses_bounds.npy
+    ├── flower/
+    ├── fortress/
+    ├── horns/
+    ├── leaves/
+    ├── orchids/
+    ├── room/
+    └── trex/
 ```
 
 ---
 
-# 3. Running the SAL Encoder (optional for reproduction)
+# 3. Running the SAL Encoder  
+The SAL encoder produces minimal embeddings that remove viewpoint, brightness, or contrast variation.
 
-To generate minimal embeddings:
+Run encoder through:
 
+```
+nerf-pytorch/encoder.py
+```
+
+## 3.1 Encoder Arguments
+
+### **Required**
+| Argument | Description |
+|----------|-------------|
+| `--dataset` | Path to a single image OR a folder containing images. |
+
+### **Optional**
+| Argument | Default | Choices | Description |
+|----------|---------|---------|-------------|
+| `--mode` | `view` | `view`, `brightness`, `contrast` | Which nuisance to marginalize out. |
+| `--output_path` | `embeddings_sal.pt` | any path | Where to save the `.pt` file of embeddings. |
+
+### Nuisance Modes Explained
+
+| Mode | Description | What SAL Removes |
+|------|-------------|------------------|
+| `view` | Samples camera viewpoints | Geometric differences between poses |
+| `brightness` | Samples brightness scaling | Global illumination changes |
+| `contrast` | Samples contrast curves | Photometric tone changes |
+
+The output file (`output_path`) contains:
+
+```
+{
+  "embeddings": Tensor (N, 128),
+  "paths": List[str]
+}
+```
+
+## 3.2 Example Commands
+
+### Viewpoint-invariant embeddings (used for decoder)
 ```bash
-python code/encoder.py \
-  --mode view \
-  --image_path nerf/data/nerf_llff_data/fern/images \
-  --nuisance_path nerf/data/nerf_llff_data/fern/poses_bounds.npy \
-  --save_path embedding_files/embeddings_fern_view.pt
+cd nerf-pytorch
+python encoder.py \
+    --dataset data/fern/images \
+    --mode view \
+    --output_path embedding_files/embeddings_fern_view.pt
 ```
 
-This produces a file:
-
+### Brightness-invariant embeddings
+```bash
+python encoder.py \
+    --dataset data/fern/images \
+    --mode brightness \
+    --output_path embedding_files/embeddings_fern_brightness.pt
 ```
-embedding_files/embeddings_fern_view.pt
+
+### Contrast-invariant embeddings
+```bash
+python encoder.py \
+    --dataset data/fern/images \
+    --mode contrast \
+    --output_path embedding_files/embeddings_fern_contrast.pt
 ```
-
-containing:
-
-- `embeddings`: minimal z vectors  
-- `paths`: image paths  
-
-This is used directly by the decoder.
 
 ---
 
 # 4. Running the Dual-SAL Decoder
 
-The decoder reconstructs:
+The decoder solves:
 
 \[
-(z, g) \mapsto \hat{y}_g
+(z_{\text{scene}}, g) \mapsto \hat{y}_g,
 \]
 
-where:
+reintroducing a nuisance variable \(g\) that SAL removed.
 
-- `z` is the scene-level minimal SAL representation  
-- `g` is the viewpoint vector (12-D camera extrinsic)  
+Use:
 
----
-
-## 4.1 Train the Baseline Decoder
-
-```bash
-python code/decoder.py \
-  --mode view \
-  --decoder_arch baseline \
-  --embeddings_path embedding_files/embeddings_fern_view.pt \
-  --nuisance_path nerf/data/nerf_llff_data/fern/poses_bounds.npy \
-  --image_path nerf/data/nerf_llff_data/fern/images \
-  --epochs 20 \
-  --save_path decoders/trained_decoders/baseline_decoder_20epochs.pth
 ```
-
-## 4.2 Train the 128-Channel Decoder
-
-```bash
-python code/decoder.py \
-  --mode view \
-  --decoder_arch 128 \
-  --embeddings_path embedding_files/embeddings_fern_view.pt \
-  --nuisance_path nerf/data/nerf_llff_data/fern/poses_bounds.npy \
-  --image_path nerf/data/nerf_llff_data/fern/images \
-  --epochs 20 \
-  --save_path decoders/trained_decoders/basech128_decoder_20epochs.pth
-```
-
-## 4.3 Train the ResNet Decoder
-
-```bash
-python code/decoder.py \
-  --mode view \
-  --decoder_arch resnet \
-  --embeddings_path embedding_files/embeddings_fern_view.pt \
-  --nuisance_path nerf/data/nerf_llff_data/fern/poses_bounds.npy \
-  --image_path nerf/data/nerf_llff_data/fern/images \
-  --epochs 20 \
-  --save_path decoders/trained_decoders/resnet64_decoder_20epochs.pth
+nerf-pytorch/decoder.py
 ```
 
 ---
 
-# 5. Evaluating a Trained Decoder
+# 4.1 Decoder Arguments (Full Documentation)
 
-Example:
+### **Required**
+| Argument | Description |
+|----------|-------------|
+| `--embeddings_path` | Path to encoder-generated `.pt` embedding file. |
 
-```bash
-python code/decoder.py \
-  --eval_only \
-  --mode view \
-  --decoder_arch resnet \
-  --embeddings_path embedding_files/embeddings_fern_view.pt \
-  --nuisance_path nerf/data/nerf_llff_data/fern/poses_bounds.npy \
-  --image_path nerf/data/nerf_llff_data/fern/images \
-  --eval_pth_file decoders/trained_decoders/resnet64_decoder_20epochs.pth
-```
+### **Dataset / Nuisance Parameters**
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--nuisance_path` | `data/fern/poses_bounds.npy` | Nuisance values (camera poses, brightness scalars, etc.). |
+| `--image_path` | `data/fern/images` | Ground-truth target images. |
+| `--dataset_name` | `fern` | `fern` (1 scene) or `multiscene` (8 LLFF scenes). |
+| `--mode` | `view` | Which nuisance to reintroduce (`view`, `brightness`, `contrast`). |
 
-During evaluation, the script prints:
+### **Model Architecture**
+| Argument | Default | Options | Meaning |
+|----------|---------|---------|---------|
+| `--decoder_arch` | `128` | `baseline`, `128`, `resnet` | Choose decoder capacity. |
+| `--img_size` | `64` | int | Output resolution. |
 
-- L1(recon_i, GT_i)  
-- L1(recon_i, GT_j)  
-- L1(swap, GT_j)  
-- L1(swap, GT_i)
+### **Training Parameters**
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--epochs` | 50 | Training epochs. |
+| `--batch_size` | 8 | Batch size. |
+| `--lr` | `1e-4` | Learning rate (Adam). |
+| `--save_path` | `decoder_fern.pth` | Where to save trained model. |
 
-And renders:
-
-- GT(i)  
-- GT(j)  
-- Reconstruction  
-- Swap reconstruction  
-
-These metrics demonstrate whether the decoder correctly responds to nuisance variable g.
-
----
-
-# 6. Reproducing Paper Results
-
-To reproduce the exact results reported in the project writeup:
-
-1. Use **embeddings_fern_view.pt**  
-2. Train all 3 decoders for 20 epochs  
-3. Run the evaluation commands above  
-4. Observe:
-
-   - `L1(swap,GT_j) < L1(swap,GT_i)` for all models  
-   - ResNet has the strongest viewpoint response  
-
-These correspond to the quantitative experiments in Section 3.3 of the report.
+### **Evaluation**
+| Argument | Default | Meaning |
+|----------|---------|--------|
+| `--eval_only` | False | Skip training and only evaluate. |
+| `--eval_pth_file` | `decoder_fern.pth` | Trained model to evaluate. |
 
 ---
 
-# 7. Troubleshooting
-
-### Missing CUDA
-If PyTorch cannot find CUDA:
+# 4.2 Train the Decoder (Viewpoint Example)
 
 ```bash
-pip install torch==2.1.0+cpu torchvision --extra-index-url https://download.pytorch.org/whl/cu118
+cd nerf-pytorch
+python decoder.py \
+    --mode view \
+    --decoder_arch baseline \
+    --embeddings_path embedding_files/embeddings_fern_view.pt \
+    --nuisance_path data/fern/poses_bounds.npy \
+    --image_path data/fern/images \
+    --epochs 20 \
+    --save_path decoders/trained_decoders/baseline_decoder_20epochs.pth
 ```
 
-### Dataset path errors
-Ensure Fern directory structure matches:
+This:
 
+- loads minimal SAL embeddings  
+- loads ground-truth camera poses (nuisance g)  
+- trains the decoder to reconstruct images for each pose  
+
+---
+
+# 5. Evaluating a Decoder
+
+```bash
+python decoder.py \
+    --eval_only \
+    --mode view \
+    --decoder_arch baseline \
+    --embeddings_path embedding_files/embeddings_fern_view.pt \
+    --nuisance_path data/fern/poses_bounds.npy \
+    --image_path data/fern/images \
+    --eval_pth_file decoders/trained_decoders/baseline_decoder_20epochs.pth
 ```
-nerf/data/nerf_llff_data/fern/images
-nerf/data/nerf_llff_data/fern/poses_bounds.npy
+
+### Evaluation outputs:
+
+**Printed metrics:**
+
+- L1($recon_i$, $GT_i$)  
+- L1($recon_i$, $GT_j$)  
+- L1(swap, $GT_j$)  
+- L1(swap, $GT_i$)
+
+Correct behavior requires:
+
+$$
+L1(\text{swap}, GT_j) < L1(\text{swap}, GT_i).
+$$
+
+**Displayed images:**
+
+- Ground truth at $g_i$  
+- Ground truth at $g_j$ 
+- Decoder reconstruction  
+- Decoder viewpoint-swapped reconstruction  
+
+---
+
+# 6. Reproducing Results in the Report
+
+To reproduce all results in the paper:
+
+1. Compute scene-level viewpoint-invariant embeddings using:  
+   ```
+   embeddings_fern_view.pt
+   ```
+2. Train all three decoders for 20 epochs:  
+   ```
+   --decoder_arch baseline
+   --decoder_arch 128
+   --decoder_arch resnet
+   ```
+3. Evaluate using commands in Section 5  
+4. Verify viewpoint behavior:  
+   ```
+   L1(swap, GT_j) < L1(swap, GT_i)
+   ```
+5. Compare ResNet vs baseline  
+6. Observe SAL minimality causing low-frequency reconstructions  
+
+---
+
+# 7. Exploring the System (Modes + Architectures)
+
+### Nuisance types:
+```
+--mode view
+--mode brightness
+--mode contrast
 ```
 
-### Embedding mismatch
-Embeddings must correspond to:
+### Decoder architectures:
+```
+--decoder_arch baseline
+--decoder_arch 128
+--decoder_arch resnet
+```
 
-- SAME scene  
-- SAME image ordering  
-- SAME SAL encoder mode (view / brightness / contrast)
+### Hyperparameters:
+```
+--epochs
+--batch_size
+--lr
+```
+
+### Output resolution:
+```
+--img_size 64
+--img_size 128
+```
+
+### Multiple scenes:
+```
+--dataset_name multiscene
+```
 
 ---
 
 # 8. Credits
 
-This project uses:
-
-- PyTorch  
-- torchvision  
 - LLFF dataset  
-- NeRF-Pytorch utilities (poses)  
-- ChatGPT assistance for editing, formatting, and clarity (per course policy)
-
-All custom SAL algorithms, decoders, and nuisance-injection logic were written by me.
+- NeRF-Pytorch utilities (pose loading, image handling)  
+- PyTorch  
+- ChatGPT assistance for formatting and clarity (all algorithmic work is original)
 
 ---
 

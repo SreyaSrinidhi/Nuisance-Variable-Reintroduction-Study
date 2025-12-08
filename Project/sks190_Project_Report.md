@@ -305,6 +305,11 @@ It is easier to see this in the actual images than in the raw distances. I inclu
 
 ---
 
+For full reproducibility, all minimal embeddings used in decoder experiments are provided
+as downloadable artifacts in the project [README](../Project/README.md). These can also be regenerated using
+the provided SAL encoder script.
+
+
 ### 3.2.2 Quantitative Results
 
 To evaluate whether each decoder truly uses the nuisance variable $g$, I compare four quantities for two views $i$ and $j$ of the same scene:
@@ -438,6 +443,17 @@ The dual-SAL decoder enables controlled reintroduction of specific nuisances tha
 
 3. **Data augmentation for recognition tasks**  
    Because the decoder simulates nuisance variations from a single minimal representation, it can generate diverse nuisance-augmented views that share the same underlying class/identity. This could be used for training more robust recognition models without collecting additional real-world data.
+4. **Learned Image Compression via Minimal Representations**  
+   An intriguing application is to use SAL as the basis for a new, AI-driven image compression format. Traditional codecs such as JPEG and WebP compress images by removing high-frequency components using hand-engineered transforms (DCT, wavelets). SAL instead removes *entire nuisance groups*, producing an extremely compact representation $z$ that is invariant to viewpoint, brightness, contrast, and other transformations.  
+   
+   If an image can be approximated by the dual-SAL mapping  
+   $$
+   y \approx D_\psi(z_{\text{minimal}}, g_{\text{nuisance}}),
+   $$ 
+   then storage reduces to saving the factorized pair $(z_{\text{minimal}}, g_{\text{nuisance}})$, where $z_{\text{minimal}}$ is low-dimensional and $g$ consists of only a few scalar parameters (pose, brightness, contrast, etc.). This creates a **generative compression scheme** in which scene content and nuisance conditions are stored separately. During decoding, the nuisance variable can be reapplied to reconstruct an image under the original conditions—or deliberately altered for editing.  
+
+   Such a representation could potentially save substantial storage space while enabling semantically meaningful editing, offering a path toward AI-native codecs where nuisance variability is not redundantly stored but regenerated on demand.
+
 
 ---
 

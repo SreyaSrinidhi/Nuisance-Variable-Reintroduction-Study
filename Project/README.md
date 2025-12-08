@@ -90,7 +90,24 @@ Project/nerf-pytorch/data/
 
 ---
 
-# 3. Running the SAL Encoder  
+# 3. Downloading Embedding Files
+
+To reproduce all decoder experiments exactly as reported, download the
+precomputed minimal SAL embeddings from the following [Google Drive link](https://drive.google.com/drive/folders/1wr9Nf5-5a097vRjD652QPRZuCLaZU6qr?usp=sharing)
+
+Place them into:
+
+```
+Project/nerf-pytorch/embedding_files/
+```
+
+These embedding files were generated using the SAL encoder (see Section 3).
+You may regenerate them yourself, but providing them ensures full
+reproducibility without recomputing SAL for all images.
+
+---
+
+# 4. Running the SAL Encoder  
 The SAL encoder produces minimal embeddings that remove viewpoint, brightness, or contrast variation.
 
 Run encoder through:
@@ -99,7 +116,7 @@ Run encoder through:
 nerf-pytorch/encoder.py
 ```
 
-## 3.1 Encoder Arguments
+## 4.1 Encoder Arguments
 
 ### **Required**
 | Argument | Description |
@@ -129,7 +146,7 @@ The output file (`output_path`) contains:
 }
 ```
 
-## 3.2 Example Commands
+## 4.2 Example Commands
 
 ### Viewpoint-invariant embeddings (used for decoder)
 ```bash
@@ -158,15 +175,15 @@ python encoder.py \
 
 ---
 
-# 4. Running the Dual-SAL Decoder
+# 5. Running the Dual-SAL Decoder
 
 The decoder solves:
 
-\[
+$$
 (z_{\text{scene}}, g) \mapsto \hat{y}_g,
-\]
+$$
 
-reintroducing a nuisance variable \(g\) that SAL removed.
+reintroducing a nuisance variable $g$ that SAL removed.
 
 Use:
 
@@ -176,7 +193,7 @@ nerf-pytorch/decoder.py
 
 ---
 
-# 4.1 Decoder Arguments (Full Documentation)
+# 5.1 Decoder Arguments (Full Documentation)
 
 ### **Required**
 | Argument | Description |
@@ -213,7 +230,7 @@ nerf-pytorch/decoder.py
 
 ---
 
-# 4.2 Train the Decoder (Viewpoint Example)
+# 5.2 Train the Decoder (Viewpoint Example)
 
 ```bash
 cd nerf-pytorch
@@ -235,7 +252,7 @@ This:
 
 ---
 
-# 5. Evaluating a Decoder
+# 6. Evaluating a Decoder
 
 ```bash
 python decoder.py \
@@ -272,7 +289,7 @@ $$
 
 ---
 
-# 6. Reproducing Results in the Report
+# 7. Reproducing Results in the Report
 
 To reproduce all results in the paper:
 
@@ -296,7 +313,7 @@ To reproduce all results in the paper:
 
 ---
 
-# 7. Exploring the System (Modes + Architectures)
+# 8. Exploring the System (Modes + Architectures)
 
 ### Nuisance types:
 ```
@@ -332,7 +349,7 @@ To reproduce all results in the paper:
 
 ---
 
-# 8. Credits
+# 9. Credits
 
 - LLFF dataset  
 - NeRF-Pytorch utilities (pose loading, image handling)  

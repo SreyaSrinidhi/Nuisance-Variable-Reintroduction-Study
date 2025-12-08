@@ -446,10 +446,12 @@ The dual-SAL decoder enables controlled reintroduction of specific nuisances tha
 4. **Learned Image Compression via Minimal Representations**  
    An intriguing application is to use SAL as the basis for a new, AI-driven image compression format. Traditional codecs such as JPEG and WebP compress images by removing high-frequency components using hand-engineered transforms (DCT, wavelets). SAL instead removes *entire nuisance groups*, producing an extremely compact representation $z$ that is invariant to viewpoint, brightness, contrast, and other transformations.  
    
-   If an image can be approximated by the dual-SAL mapping  
+   If an image can be approximated by the dual-SAL mapping
+   
    $$
    y \approx D_\psi(z_{\text{minimal}}, g_{\text{nuisance}}),
-   $$ 
+   $$
+
    then storage reduces to saving the factorized pair $(z_{\text{minimal}}, g_{\text{nuisance}})$, where $z_{\text{minimal}}$ is low-dimensional and $g$ consists of only a few scalar parameters (pose, brightness, contrast, etc.). This creates a **generative compression scheme** in which scene content and nuisance conditions are stored separately. During decoding, the nuisance variable can be reapplied to reconstruct an image under the original conditions—or deliberately altered for editing.  
 
    Such a representation could potentially save substantial storage space while enabling semantically meaningful editing, offering a path toward AI-native codecs where nuisance variability is not redundantly stored but regenerated on demand.
